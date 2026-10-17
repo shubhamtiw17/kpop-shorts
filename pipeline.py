@@ -53,7 +53,11 @@ def candidates(extra_seen=()):
     with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True,
                            "playlistend": CFG.get("scan_depth", 300)}) as y:
         for src in CFG["sources"]:
-            for e in y.extract_info(src["url"], download=False).get("entries", []):
+            try:
+                entries = y.extract_info(src["url"], download=False).get("entries", [])
+            except Exception as e:  # e.g. channel has no videos tab
+                print(f"skip source {src['name']}: {str(e)[:120]}"); continue
+            for e in entries:
                 vid, title = e["id"], e.get("title", "")
                 t = title.lower()
                 if vid in seen or any(b in t for b in blocked):

@@ -1,10 +1,6 @@
 # Sources you have permission for / verified CC originals ONLY
 sources:
   - name: Baddie_Cam
-    url: https://www.youtube.com/@Baddie_Cam/videos
-    credit: ""                     # no credit shown
-    require_cc: false
-  - name: Baddie_Cam_shorts
     url: https://www.youtube.com/@Baddie_Cam/shorts
     credit: ""                     # no credit shown
     require_cc: false
