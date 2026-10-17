@@ -2,11 +2,11 @@
 sources:
   - name: Baddie_Cam
     url: https://www.youtube.com/@Baddie_Cam/shorts
-    credit: "Cam: @Baddie_Cam (used with permission)"
+    credit: "cam: @Baddie_Cam"
     require_cc: false
   - name: sskrsm_
     url: https://www.youtube.com/@sskrsm_/videos
-    credit: "Cam: @sskrsm_ (CC BY)"
+    credit: "cam: @sskrsm_ (CC BY)"
     require_cc: true   # per-video licence check
 
 posts_per_run: 1          # workflow runs 2x/day -> 60/month

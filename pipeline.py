@@ -90,10 +90,7 @@ def make_overlay(caption, credit, path):
         d.rectangle([(1080 - w) / 2 - 16, y - 8, (1080 + w) / 2 + 16, y + 72], fill=(0, 0, 0, 140))
         d.text(((1080 - w) / 2, y), line, font=f1, fill="white")
         y += 84
-    w = d.textlength(credit, font=f2)
-    d.text(((1080 - w) / 2, 1700), credit, font=f2, fill="white",
-           stroke_width=3, stroke_fill="black")
-    img.save(path)
+    img.save(path)  # credit goes in the description, not on screen
 
 
 def edit(src_path, start, length, caption, credit, vid):
@@ -119,7 +116,7 @@ def main():
         start = highlight_start(path, length)
         caption = title[:60]
         short = edit(path, start, length, caption, src["credit"], vid)
-        desc = f"{title}\n\n{src['credit']}\nFull cam: https://youtu.be/{vid}\n\n{CFG['hashtags']}"
+        desc = f"{title}\n\n{CFG['hashtags']}\n\n{src['credit']} · youtu.be/{vid}"
 
         from uploaders import upload_youtube, upload_instagram
         yt = upload_youtube(short, caption, desc)
