@@ -134,7 +134,9 @@ def main():
         start = highlight_start(path, length)
         caption = title[:60]
         short = edit(path, start, length, caption, src["credit"], vid)
-        desc = f"{title}\n\n{CFG['hashtags']}\n\n{src['credit']} · youtu.be/{vid}"
+        desc = f"{title}\n\n{CFG['hashtags']}"
+        if src.get("credit"):  # only sources that require attribution (e.g. CC BY)
+            desc += f"\n\n{src['credit']} · youtu.be/{vid}"
 
         from uploaders import upload_youtube, upload_instagram
         yt = ig = "skipped"
