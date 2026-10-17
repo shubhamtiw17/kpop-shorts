@@ -8,14 +8,11 @@ permissions:
   contents: write
 jobs:
   post:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted    # your Mac (YouTube blocks GitHub's servers)
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: pip install -r requirements.txt
-      - run: python pipeline.py
+      - run: python3 -m pip install -q --upgrade -r requirements.txt --break-system-packages || python3 -m pip install -q --upgrade -r requirements.txt
+      - run: python3 pipeline.py
         env:
           GH_TOKEN: ${{ github.token }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
