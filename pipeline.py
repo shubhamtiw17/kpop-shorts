@@ -211,7 +211,10 @@ def prepare():
 def publish():
     """Cloud side: post the oldest queued clip, within daily limits."""
     yt_left = CFG["yt_daily_max"] - posted_today("yt_id")
-    ig_left = CFG["ig_daily_max"] - posted_today("ig_id")
+    ig_max = CFG["ig_daily_max"]
+    if CFG.get("ig_ramp_date") and str(dt.date.today()) >= CFG["ig_ramp_date"]:
+        ig_max = CFG.get("ig_daily_max_after", ig_max)
+    ig_left = ig_max - posted_today("ig_id")
     if yt_left <= 0 and ig_left <= 0:
         print("Daily limits reached on both platforms"); return
     mp4s = [a for a in queue_assets() if a["name"].endswith(".mp4")]
