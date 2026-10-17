@@ -1,0 +1,100 @@
+"""K-pop dance highlights: fetch -> detect highlight -> 9:16 edit -> upload YT + IG.
+Run: python pipeline.py   (env vars: see README)"""
+import csv, json, os, subprocess, sys, datetime as dt
+import numpy as np, yaml, yt_dlp
+
+CFG = yaml.safe_load(open("config.yaml"))
+LOG = "posted_log.csv"
+WORK = "work"; os.makedirs(WORK, exist_ok=True)
+
+
+def posted_ids():
+    if not os.path.exists(LOG):
+        return set()
+    return {r["video_id"] for r in csv.DictReader(open(LOG))}
+
+
+def candidates():
+    seen, blocked = posted_ids(), [k.lower() for k in CFG["blocked_title_keywords"]]
+    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True, "playlistend": 40}) as y:
+        for src in CFG["sources"]:
+            for e in y.extract_info(src["url"], download=False).get("entries", []):
+                vid, title = e["id"], e.get("title", "")
+                if vid in seen or any(b in title.lower() for b in blocked):
+                    continue
+                if src["require_cc"]:
+                    info = y.extract_info(f"https://youtu.be/{vid}", download=False)
+                    if "creative commons" not in (info.get("license") or "").lower():
+                        continue
+                yield src, vid, title
+
+
+def download(vid):
+    out = f"{WORK}/{vid}.mp4"
+    with yt_dlp.YoutubeDL({"quiet": True, "outtmpl": out,
+                           "format": "bv*[height<=1080]+ba/b", "merge_output_format": "mp4"}) as y:
+        y.download([f"https://youtu.be/{vid}"])
+    return out
+
+
+def duration(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "json", path], capture_output=True, text=True)
+    return float(json.loads(r.stdout)["format"]["duration"])
+
+
+def highlight_start(path, win):
+    """Pick the window with the highest audio energy (chorus / dance break)."""
+    raw = subprocess.run(["ffmpeg", "-v", "quiet", "-i", path, "-ac", "1", "-ar", "8000",
+                          "-f", "s16le", "-"], capture_output=True).stdout
+    a = np.frombuffer(raw, np.int16).astype(np.float32)
+    if len(a) < 8000 * win:
+        return 0.0
+    sec = np.sqrt((a[: len(a) // 8000 * 8000].reshape(-1, 8000) ** 2).mean(1))
+    scores = np.convolve(sec, np.ones(win), "valid")
+    return float(np.argmax(scores))
+
+
+def edit(src_path, start, length, caption, credit, vid):
+    out = f"{WORK}/{vid}_short.mp4"
+    esc = lambda s: s.replace(":", r"\:").replace("'", "’")
+    vf = ("crop='min(iw,ih*9/16)':ih,scale=1080:1920,"
+          f"drawtext=text='{esc(caption)}':fontcolor=white:fontsize=56:box=1:boxcolor=black@0.5:"
+          "x=(w-tw)/2:y=160,"
+          f"drawtext=text='{esc(credit)}':fontcolor=white:fontsize=38:x=(w-tw)/2:y=h-220")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-t", str(length),
+                    "-i", src_path, "-vf", vf, "-c:v", "libx264", "-preset", "fast",
+                    "-crf", "21", "-c:a", "aac", "-movflags", "+faststart", out], check=True)
+    return out
+
+
+def main():
+    n = 0
+    for src, vid, title in candidates():
+        path = download(vid)
+        length = min(CFG["clip_seconds"], int(duration(path)))
+        if length < CFG["min_clip_seconds"]:
+            continue
+        start = highlight_start(path, length)
+        caption = title[:60]
+        short = edit(path, start, length, caption, src["credit"], vid)
+        desc = f"{title}\n\n{src['credit']}\nFull cam: https://youtu.be/{vid}\n\n{CFG['hashtags']}"
+
+        from uploaders import upload_youtube, upload_instagram
+        yt = upload_youtube(short, caption, desc)
+        ig = upload_instagram(short, desc)
+
+        new = not os.path.exists(LOG)
+        with open(LOG, "a", newline="") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
+            w.writerow([dt.date.today(), src["name"], vid, title, yt, ig])
+        n += 1
+        if n >= CFG["posts_per_run"]:
+            break
+    print(f"Posted {n}") if n else sys.exit("Backlog empty: no new eligible clips")
+
+
+if __name__ == "__main__":
+    main()
