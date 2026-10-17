@@ -1,11 +1,34 @@
-"""K-pop dance highlights: fetch -> detect highlight -> 9:16 edit -> upload YT + IG.
-Run: python pipeline.py   (env vars: see README)"""
+"""K-pop dance highlights, in two halves:
+
+  python3 pipeline.py prepare   (your Mac, whenever it's awake)
+      find new clips -> download -> highlight -> 9:16 edit -> park in the GitHub "queue" release
+  python3 pipeline.py publish   (GitHub cloud, hourly, Mac can be off)
+      take the oldest queued clip -> post to YouTube + Instagram -> log -> remove from queue
+"""
 import csv, json, os, subprocess, sys, datetime as dt
 import numpy as np, yaml, yt_dlp
 
 CFG = yaml.safe_load(open("config.yaml"))
 LOG = "posted_log.csv"
 WORK = "work"; os.makedirs(WORK, exist_ok=True)
+
+
+REPO = os.environ.get("GITHUB_REPOSITORY", "shubhamtiw17/kpop-shorts")
+QUEUE = "queue"
+
+
+def gh(*args, check=True):
+    return subprocess.run(["gh", *args, "-R", REPO], capture_output=True, text=True, check=check).stdout
+
+
+def queue_assets():
+    """Assets in the queue release, oldest first."""
+    out = gh("release", "view", QUEUE, "--json", "assets", check=False)
+    if not out:
+        gh("release", "create", QUEUE, "-t", "clip queue", "-n", "Auto-managed by the bot",
+           "--prerelease", check=False)
+        return []
+    return sorted(json.loads(out)["assets"], key=lambda a: a["createdAt"])
 
 
 def posted_ids():
@@ -23,8 +46,9 @@ def posted_today(col):
                if r["date"] == today and r.get(col) not in (None, "", "None", "skipped"))
 
 
-def candidates():
-    seen, blocked = posted_ids(), [k.lower() for k in CFG["blocked_title_keywords"]]
+def candidates(extra_seen=()):
+    seen = posted_ids() | set(extra_seen)
+    blocked = [k.lower() for k in CFG["blocked_title_keywords"]]
     groups = [g.lower() for names in CFG["focus_groups"].values() for g in names]
     with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True,
                            "playlistend": CFG.get("scan_depth", 300)}) as y:
@@ -120,48 +144,79 @@ def edit(src_path, start, length, caption, credit, vid):
     return out
 
 
-def main():
-    n = 0
+def prepare():
+    """Mac side: fill the queue up to queue_target clips."""
+    assets = queue_assets()
+    queued = {a["name"].rsplit(".", 1)[0] for a in assets}
+    need = CFG["queue_target"] - sum(a["name"].endswith(".mp4") for a in assets)
+    print(f"Queue has {len(queued)} clips, adding up to {max(need, 0)}")
+    added = 0
+    for src, vid, title in candidates(queued):
+        if added >= need:
+            break
+        try:
+            path = download(vid)
+            length = min(CFG["clip_seconds"], int(duration(path)))
+            if length < CFG["min_clip_seconds"]:
+                continue
+            caption = title[:60]
+            short = edit(path, highlight_start(path, length), length, caption, src["credit"], vid)
+        except Exception as e:
+            print(f"skip {vid}: {str(e)[:150]}"); continue
+        desc = f"{title}\n\n{CFG['hashtags']}"
+        if src.get("credit"):  # only sources that require attribution (e.g. CC BY)
+            desc += f"\n\n{src['credit']} · youtu.be/{vid}"
+        meta = f"{WORK}/{vid}.json"
+        json.dump({"vid": vid, "source": src["name"], "title": title,
+                   "caption": caption, "desc": desc}, open(meta, "w"), ensure_ascii=False)
+        clip = f"{WORK}/{vid}.mp4"
+        os.replace(short, clip)
+        gh("release", "upload", QUEUE, meta, clip, "--clobber")
+        for f in os.listdir(WORK):
+            os.remove(os.path.join(WORK, f))
+        added += 1
+        print(f"queued {vid}: {title}")
+    print(f"Added {added}. Queue now ~{len(queued) + added}")
+
+
+def publish():
+    """Cloud side: post the oldest queued clip, within daily limits."""
     yt_left = CFG["yt_daily_max"] - posted_today("yt_id")
     ig_left = CFG["ig_daily_max"] - posted_today("ig_id")
     if yt_left <= 0 and ig_left <= 0:
         print("Daily limits reached on both platforms"); return
-    for src, vid, title in candidates():
-        path = download(vid)
-        length = min(CFG["clip_seconds"], int(duration(path)))
-        if length < CFG["min_clip_seconds"]:
-            continue
-        start = highlight_start(path, length)
-        caption = title[:60]
-        short = edit(path, start, length, caption, src["credit"], vid)
-        desc = f"{title}\n\n{CFG['hashtags']}"
-        if src.get("credit"):  # only sources that require attribution (e.g. CC BY)
-            desc += f"\n\n{src['credit']} · youtu.be/{vid}"
+    mp4s = [a for a in queue_assets() if a["name"].endswith(".mp4")]
+    if not mp4s:
+        sys.exit("Queue empty: open your Mac so it can prepare more clips")
+    vid = mp4s[0]["name"][:-4]
+    gh("release", "download", QUEUE, "-p", f"{vid}.*", "-D", WORK, "--clobber")
+    m = json.load(open(f"{WORK}/{vid}.json"))
+    clip = f"{WORK}/{vid}.mp4"
+    url = f"https://github.com/{REPO}/releases/download/{QUEUE}/{vid}.mp4"
 
-        from uploaders import upload_youtube, upload_instagram
-        yt = ig = "skipped"
-        if yt_left > 0:
-            try:
-                yt = upload_youtube(short, caption, desc); yt_left -= 1
-            except Exception as e:  # e.g. quotaExceeded: still post to IG
-                print("YouTube upload failed:", str(e)[:200]); yt_left = 0
-        if ig_left > 0:
-            try:
-                ig = upload_instagram(short, desc); ig_left -= 1
-            except Exception as e:
-                print("Instagram upload failed:", str(e)[:200])
+    from uploaders import upload_youtube, upload_instagram
+    yt = ig = "skipped"
+    if yt_left > 0:
+        try:
+            yt = upload_youtube(clip, m["caption"], m["desc"])
+        except Exception as e:  # e.g. quotaExceeded: still post to IG
+            print("YouTube upload failed:", str(e)[:200])
+    if ig_left > 0:
+        try:
+            ig = upload_instagram(url, m["desc"])
+        except Exception as e:
+            print("Instagram upload failed:", str(e)[:200])
 
-        new = not os.path.exists(LOG)
-        with open(LOG, "a", newline="") as f:
-            w = csv.writer(f)
-            if new:
-                w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
-            w.writerow([dt.date.today(), src["name"], vid, title, yt, ig])
-        n += 1
-        if n >= CFG["posts_per_run"] or (yt_left <= 0 and ig_left <= 0):
-            break
-    print(f"Posted {n}") if n else sys.exit("Backlog empty: no new eligible clips")
+    new = not os.path.exists(LOG)
+    with open(LOG, "a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
+        w.writerow([dt.date.today(), m["source"], vid, m["title"], yt, ig])
+    for ext in ("mp4", "json"):
+        gh("release", "delete-asset", QUEUE, f"{vid}.{ext}", "-y", check=False)
+    print(f"Posted {vid} | YT: {yt} | IG: {ig} | {len(mp4s) - 1} left in queue")
 
 
 if __name__ == "__main__":
-    main()
+    {"prepare": prepare, "publish": publish}[sys.argv[1] if len(sys.argv) > 1 else "publish"]()
