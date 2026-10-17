@@ -1,6 +1,10 @@
 # Sources you have permission for / verified CC originals ONLY
 sources:
   - name: Baddie_Cam
+    url: https://www.youtube.com/@Baddie_Cam/videos
+    credit: "cam: @Baddie_Cam"
+    require_cc: false
+  - name: Baddie_Cam_shorts
     url: https://www.youtube.com/@Baddie_Cam/shorts
     credit: "cam: @Baddie_Cam"
     require_cc: false
@@ -9,18 +13,43 @@ sources:
     credit: "cam: @sskrsm_ (CC BY)"
     require_cc: true   # per-video licence check
 
-posts_per_run: 1          # workflow runs 2x/day -> 60/month
-clip_seconds: 25          # target highlight length
+# Volume. Workflow runs hourly; each run posts 1 clip.
+posts_per_run: 1
+yt_daily_max: 6        # YouTube free API quota = ~6 uploads/day (hard limit)
+ig_daily_max: 16       # one per hourly run; Instagram API allows up to 100/day
+scan_depth: 300        # how many recent uploads per source to look through
+
+clip_seconds: 25
 min_clip_seconds: 12
 
-# Skip any video whose title mentions these (members under 18 / unwanted framing)
+# Only clips whose title mentions one of these (English or Korean) are posted
+focus_groups:
+  TWICE: ["twice", "트와이스"]
+  BLACKPINK: ["blackpink", "블랙핑크"]
+  aespa: ["aespa", "에스파"]
+  ITZY: ["itzy", "있지"]
+  LE SSERAFIM: ["le sserafim", "lesserafim", "르세라핌"]
+  IVE: ["ive ", "(ive)", "[ive]", "아이브"]
+  BABYMONSTER: ["babymonster", "baby monster", "베이비몬스터"]
+  ILLIT: ["illit", "아일릿"]
+  NMIXX: ["nmixx", "엔믹스"]
+  i-dle: ["(g)i-dle", "i-dle", "gidle", "아이들"]
+  Red Velvet: ["red velvet", "레드벨벳"]
+  KISS OF LIFE: ["kiss of life", "키스오브라이프"]
+  STAYC: ["stayc", "스테이씨"]
+  NewJeans: ["newjeans", "뉴진스"]
+
+# Skip any video whose title mentions these (members under 18 / unwanted framing).
+# Keep this updated as new groups debut.
 blocked_title_keywords:
   - hot
   - sexy
-  - baddie        # strips channel-name framing from captions
-  # add under-18 member names here, keep updated:
-  - ILLIT Iroha
-  - BABYMONSTER Chiquita
-  - MEOVV Anna
+  - baddie
+  - Chiquita
+  - 치키타
+  - MEOVV
+  - 미야오
+  - Hearts2Hearts
+  - 하츠투하츠
 
 hashtags: "#kpop #fancam #kpopdance #girlgroup #shorts"

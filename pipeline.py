@@ -14,13 +14,27 @@ def posted_ids():
     return {r["video_id"] for r in csv.DictReader(open(LOG))}
 
 
+def posted_today(col):
+    """How many posts went to a platform today (col = 'yt_id' or 'ig_id')."""
+    if not os.path.exists(LOG):
+        return 0
+    today = str(dt.date.today())
+    return sum(1 for r in csv.DictReader(open(LOG))
+               if r["date"] == today and r.get(col) not in (None, "", "None", "skipped"))
+
+
 def candidates():
     seen, blocked = posted_ids(), [k.lower() for k in CFG["blocked_title_keywords"]]
-    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True, "playlistend": 40}) as y:
+    groups = [g.lower() for names in CFG["focus_groups"].values() for g in names]
+    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True,
+                           "playlistend": CFG.get("scan_depth", 300)}) as y:
         for src in CFG["sources"]:
             for e in y.extract_info(src["url"], download=False).get("entries", []):
                 vid, title = e["id"], e.get("title", "")
-                if vid in seen or any(b in title.lower() for b in blocked):
+                t = title.lower()
+                if vid in seen or any(b in t for b in blocked):
+                    continue
+                if not any(g in t for g in groups):
                     continue
                 if src["require_cc"]:
                     info = y.extract_info(f"https://youtu.be/{vid}", download=False)
@@ -108,6 +122,10 @@ def edit(src_path, start, length, caption, credit, vid):
 
 def main():
     n = 0
+    yt_left = CFG["yt_daily_max"] - posted_today("yt_id")
+    ig_left = CFG["ig_daily_max"] - posted_today("ig_id")
+    if yt_left <= 0 and ig_left <= 0:
+        print("Daily limits reached on both platforms"); return
     for src, vid, title in candidates():
         path = download(vid)
         length = min(CFG["clip_seconds"], int(duration(path)))
@@ -119,8 +137,17 @@ def main():
         desc = f"{title}\n\n{CFG['hashtags']}\n\n{src['credit']} · youtu.be/{vid}"
 
         from uploaders import upload_youtube, upload_instagram
-        yt = upload_youtube(short, caption, desc)
-        ig = upload_instagram(short, desc)
+        yt = ig = "skipped"
+        if yt_left > 0:
+            try:
+                yt = upload_youtube(short, caption, desc); yt_left -= 1
+            except Exception as e:  # e.g. quotaExceeded: still post to IG
+                print("YouTube upload failed:", str(e)[:200]); yt_left = 0
+        if ig_left > 0:
+            try:
+                ig = upload_instagram(short, desc); ig_left -= 1
+            except Exception as e:
+                print("Instagram upload failed:", str(e)[:200])
 
         new = not os.path.exists(LOG)
         with open(LOG, "a", newline="") as f:
@@ -129,7 +156,7 @@ def main():
                 w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
             w.writerow([dt.date.today(), src["name"], vid, title, yt, ig])
         n += 1
-        if n >= CFG["posts_per_run"]:
+        if n >= CFG["posts_per_run"] or (yt_left <= 0 and ig_left <= 0):
             break
     print(f"Posted {n}") if n else sys.exit("Backlog empty: no new eligible clips")
 
