@@ -16,7 +16,7 @@ sources:
 # Volume. Workflow runs hourly; each run posts 1 clip.
 posts_per_run: 1
 yt_daily_max: 6        # YouTube free API quota = ~6 uploads/day (hard limit)
-ig_daily_max: 16       # one per hourly run; Instagram API allows up to 100/day
+ig_daily_max: 8        # warm-up: raise to 16 after ~2 weeks
 scan_depth: 300        # how many recent uploads per source to look through
 
 clip_seconds: 25
