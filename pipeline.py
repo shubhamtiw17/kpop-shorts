@@ -55,16 +55,57 @@ def highlight_start(path, win):
     return float(np.argmax(scores))
 
 
+FONTS = ["/System/Library/Fonts/AppleSDGothicNeo.ttc",          # macOS (Korean ok)
+         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"]   # Linux fallback
+
+
+def _font(size):
+    from PIL import ImageFont
+    for f in FONTS:
+        if os.path.exists(f):
+            return ImageFont.truetype(f, size)
+    return ImageFont.load_default()
+
+
+def _wrap(draw, text, font, maxw):
+    lines, cur = [], ""
+    for word in text.split():
+        test = f"{cur} {word}".strip()
+        if cur and draw.textlength(test, font=font) > maxw:
+            lines.append(cur); cur = word
+        else:
+            cur = test
+    return lines + [cur] if cur else lines
+
+
+def make_overlay(caption, credit, path):
+    """Render text to a transparent PNG (no ffmpeg drawtext needed)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    f1, f2 = _font(56), _font(38)
+    y = 150
+    for line in _wrap(d, caption, f1, 960)[:2]:
+        w = d.textlength(line, font=f1)
+        d.rectangle([(1080 - w) / 2 - 16, y - 8, (1080 + w) / 2 + 16, y + 72], fill=(0, 0, 0, 140))
+        d.text(((1080 - w) / 2, y), line, font=f1, fill="white")
+        y += 84
+    w = d.textlength(credit, font=f2)
+    d.text(((1080 - w) / 2, 1700), credit, font=f2, fill="white",
+           stroke_width=3, stroke_fill="black")
+    img.save(path)
+
+
 def edit(src_path, start, length, caption, credit, vid):
-    out = f"{WORK}/{vid}_short.mp4"
-    esc = lambda s: s.replace(":", r"\:").replace("'", "’")
-    vf = ("crop='min(iw,ih*9/16)':ih,scale=1080:1920,"
-          f"drawtext=text='{esc(caption)}':fontcolor=white:fontsize=56:box=1:boxcolor=black@0.5:"
-          "x=(w-tw)/2:y=160,"
-          f"drawtext=text='{esc(credit)}':fontcolor=white:fontsize=38:x=(w-tw)/2:y=h-220")
+    out, ov = f"{WORK}/{vid}_short.mp4", f"{WORK}/{vid}_ov.png"
+    make_overlay(caption, credit, ov)
+    fc = ("[0:v]crop='min(iw,ih*9/16)':ih,scale=1080:1920,setsar=1[v];"
+          "[v][1:v]overlay=0:0[out]")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-t", str(length),
-                    "-i", src_path, "-vf", vf, "-c:v", "libx264", "-preset", "fast",
-                    "-crf", "21", "-c:a", "aac", "-movflags", "+faststart", out], check=True)
+                    "-i", src_path, "-i", ov, "-filter_complex", fc, "-map", "[out]",
+                    "-map", "0:a?", "-c:v", "libx264", "-preset", "fast", "-crf", "21",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", out],
+                   check=True)
     return out
 
 
