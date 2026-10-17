@@ -1,18 +1,22 @@
 name: post-short
 on:
   schedule:
-    - cron: "17 9 * * *"    # ~11:17 CEST
-    - cron: "17 17 * * *"   # ~19:17 CEST
+    - cron: "17 3-18 * * *"   # hourly 08:47–23:47 IST; runs in GitHub's cloud, Mac can be off
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: post-short
+  cancel-in-progress: false
 jobs:
-  post:
-    runs-on: self-hosted    # your Mac (YouTube blocks GitHub's servers)
+  publish:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install -q --upgrade -r requirements.txt --break-system-packages || python3 -m pip install -q --upgrade -r requirements.txt
-      - run: python3 pipeline.py
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q -r requirements.txt
+      - run: python pipeline.py publish
         env:
           GH_TOKEN: ${{ github.token }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
@@ -21,6 +25,7 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
       - name: Commit log
+        if: always()
         run: |
           git config user.name bot && git config user.email bot@users.noreply.github.com
-          git add posted_log.csv && git commit -m "log" && git push || true
+          git add posted_log.csv && git commit -m "log" && git pull --rebase && git push || true
