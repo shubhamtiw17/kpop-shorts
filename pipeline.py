@@ -46,21 +46,43 @@ def posted_today(col):
                if r["date"] == today and r.get(col) not in (None, "", "None", "skipped"))
 
 
+TITLES = "seen_titles.txt"  # Mac-only memory of stages already used
+
+
+def norm(title):
+    return " ".join(title.lower().split())
+
+
+def seen_titles():
+    t = {norm(r["title"]) for r in csv.DictReader(open(LOG))} if os.path.exists(LOG) else set()
+    if os.path.exists(TITLES):
+        t |= {l.strip() for l in open(TITLES) if l.strip()}
+    return t
+
+
 def candidates(extra_seen=()):
     seen = posted_ids() | set(extra_seen)
+    used = seen_titles()
     blocked = [k.lower() for k in CFG["blocked_title_keywords"]]
     groups = [g.lower() for names in CFG["focus_groups"].values() for g in names]
     with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True,
                            "playlistend": CFG.get("scan_depth", 300)}) as y:
+        lists = []
         for src in CFG["sources"]:
             try:
                 entries = y.extract_info(src["url"], download=False).get("entries", [])
+                lists.append([(src, e) for e in entries])
             except Exception as e:  # e.g. channel has no videos tab
-                print(f"skip source {src['name']}: {str(e)[:120]}"); continue
-            for e in entries:
+                print(f"skip source {src['name']}: {str(e)[:120]}")
+        # round-robin across sources so the feed mixes cammers
+        for i in range(max((len(l) for l in lists), default=0)):
+            for l in lists:
+                if i >= len(l):
+                    continue
+                src, e = l[i]
                 vid, title = e["id"], e.get("title", "")
                 t = title.lower()
-                if vid in seen or any(b in t for b in blocked):
+                if vid in seen or norm(title) in used or any(b in t for b in blocked):
                     continue
                 if not any(g in t for g in groups):
                     continue
@@ -68,6 +90,7 @@ def candidates(extra_seen=()):
                     info = y.extract_info(f"https://youtu.be/{vid}", download=False)
                     if "creative commons" not in (info.get("license") or "").lower():
                         continue
+                used.add(norm(title))  # one clip per stage/title
                 yield src, vid, title
 
 
@@ -176,6 +199,8 @@ def prepare():
         clip = f"{WORK}/{vid}.mp4"
         os.replace(short, clip)
         gh("release", "upload", QUEUE, meta, clip, "--clobber")
+        with open(TITLES, "a") as f:
+            f.write(norm(title) + "\n")
         for f in os.listdir(WORK):
             os.remove(os.path.join(WORK, f))
         added += 1

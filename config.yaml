@@ -4,6 +4,22 @@ sources:
     url: https://www.youtube.com/@Baddie_Cam/shorts
     credit: ""                     # no credit shown
     require_cc: false
+  - name: RARPcam
+    url: https://www.youtube.com/@RARPcam/shorts
+    credit: ""                     # permission confirmed 17 Oct 2026
+    require_cc: false
+  - name: RARPcam_videos
+    url: https://www.youtube.com/@RARPcam/videos
+    credit: ""
+    require_cc: false
+  - name: nuna_cam
+    url: https://www.youtube.com/@nuna_cam/shorts
+    credit: ""                     # permission confirmed 17 Oct 2026
+    require_cc: false
+  - name: nuna_cam_videos
+    url: https://www.youtube.com/@nuna_cam/videos
+    credit: ""
+    require_cc: false
   - name: sskrsm_
     url: https://www.youtube.com/@sskrsm_/videos
     credit: "cam: @sskrsm_ (CC BY)"  # required by CC BY licence
@@ -13,7 +29,7 @@ sources:
 queue_target: 40       # clips the Mac keeps ready (~5 days at 8/day)
 yt_daily_max: 6        # YouTube free API quota = ~6 uploads/day (hard limit)
 ig_daily_max: 8        # warm-up: raise to 16 after ~2 weeks
-scan_depth: 300        # how many recent uploads per source to look through
+scan_depth: 2000       # whole back-catalogue: months of clips even if a cammer stops
 
 clip_seconds: 25
 min_clip_seconds: 12
@@ -47,5 +63,11 @@ blocked_title_keywords:
   - 미야오
   - Hearts2Hearts
   - 하츠투하츠
+  # compilations / broadcast edits (not the cammer's own footage)
+  - 교차편집
+  - 무대모음
+  - cross edit
+  - stage mix
+  - compilation
 
 hashtags: "#kpop #fancam #kpopdance #girlgroup #shorts"

@@ -6,3 +6,4 @@ actions-runner/
 work/
 client_secret.json
 prepare.log
+seen_titles.txt
