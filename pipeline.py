@@ -208,8 +208,14 @@ def prepare():
     print(f"Added {added}. Queue now ~{len(queued) + added}")
 
 
+def delete_asset(asset):
+    """Delete by API path (asset names can start with '-', which breaks CLI args)."""
+    path = asset["apiUrl"].split("api.github.com/", 1)[1]
+    subprocess.run(["gh", "api", "-X", "DELETE", path], capture_output=True)
+
+
 def publish():
-    """Cloud side: post the oldest queued clip, within daily limits."""
+    """Cloud side: post the day's whole batch in one go, within daily limits."""
     yt_left = CFG["yt_daily_max"] - posted_today("yt_id")
     ig_max = CFG["ig_daily_max"]
     if CFG.get("ig_ramp_date") and str(dt.date.today()) >= CFG["ig_ramp_date"]:
@@ -217,37 +223,56 @@ def publish():
     ig_left = ig_max - posted_today("ig_id")
     if yt_left <= 0 and ig_left <= 0:
         print("Daily limits reached on both platforms"); return
-    mp4s = [a for a in queue_assets() if a["name"].endswith(".mp4")]
-    if not mp4s:
-        sys.exit("Queue empty: open your Mac so it can prepare more clips")
-    vid = mp4s[0]["name"][:-4]
-    gh("release", "download", QUEUE, "-p", f"{vid}.*", "-D", WORK, "--clobber")
-    m = json.load(open(f"{WORK}/{vid}.json"))
-    clip = f"{WORK}/{vid}.mp4"
-    url = f"https://github.com/{REPO}/releases/download/{QUEUE}/{vid}.mp4"
 
     from uploaders import upload_youtube, upload_instagram
-    yt = ig = "skipped"
-    if yt_left > 0:
-        try:
-            yt = upload_youtube(clip, m["caption"], m["desc"])
-        except Exception as e:  # e.g. quotaExceeded: still post to IG
-            print("YouTube upload failed:", str(e)[:200])
-    if ig_left > 0:
-        try:
-            ig = upload_instagram(url, m["desc"])
-        except Exception as e:
-            print("Instagram upload failed:", str(e)[:200])
+    done = posted_ids()
+    assets = queue_assets()
+    by_vid = {}
+    for a in assets:
+        by_vid.setdefault(a["name"].rsplit(".", 1)[0], []).append(a)
+    order = [a["name"][:-4] for a in assets if a["name"].endswith(".mp4")]
+    if not order:
+        sys.exit("Queue empty: open your Mac so it can prepare more clips")
 
-    new = not os.path.exists(LOG)
-    with open(LOG, "a", newline="") as f:
-        w = csv.writer(f)
-        if new:
-            w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
-        w.writerow([dt.date.today(), m["source"], vid, m["title"], yt, ig])
-    for ext in ("mp4", "json"):
-        gh("release", "delete-asset", QUEUE, f"{vid}.{ext}", "-y", check=False)
-    print(f"Posted {vid} | YT: {yt} | IG: {ig} | {len(mp4s) - 1} left in queue")
+    posted = 0
+    for vid in order:
+        if yt_left <= 0 and ig_left <= 0:
+            break
+        if vid in done:  # already posted earlier: just clean it out
+            for a in by_vid[vid]:
+                delete_asset(a)
+            print(f"removed duplicate {vid}"); continue
+        for a in by_vid[vid]:
+            subprocess.run(["curl", "-sL", "-o", f"{WORK}/{a['name']}", a["url"]], check=True)
+        m = json.load(open(f"{WORK}/{vid}.json"))
+        clip = f"{WORK}/{vid}.mp4"
+        url = f"https://github.com/{REPO}/releases/download/{QUEUE}/{vid}.mp4"
+
+        yt = ig = "skipped"
+        if yt_left > 0:
+            try:
+                yt = upload_youtube(clip, m["caption"], m["desc"]); yt_left -= 1
+            except Exception as e:  # e.g. quotaExceeded: stop YT, keep IG going
+                print("YouTube upload failed:", str(e)[:200]); yt_left = 0
+        if ig_left > 0:
+            try:
+                ig = upload_instagram(url, m["desc"]) or "skipped"
+                if ig != "skipped":
+                    ig_left -= 1
+            except Exception as e:
+                print("Instagram upload failed:", str(e)[:200])
+
+        new = not os.path.exists(LOG)
+        with open(LOG, "a", newline="") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["date", "source", "video_id", "title", "yt_id", "ig_id"])
+            w.writerow([dt.date.today(), m["source"], vid, m["title"], yt, ig])
+        for a in by_vid[vid]:
+            delete_asset(a)
+        done.add(vid); posted += 1
+        print(f"Posted {vid} | YT: {yt} | IG: {ig}")
+    print(f"Batch done: {posted} clips. {len(order) - posted} left in queue")
 
 
 if __name__ == "__main__":

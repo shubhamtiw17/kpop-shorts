@@ -21,7 +21,7 @@ sources:
     credit: "cam: @sskrsm_ (CC BY)"  # required by CC BY licence
     require_cc: true   # per-video licence check
 
-# Volume. Cloud posts 1 clip per hourly run; Mac keeps the queue filled.
+# Volume. Cloud posts the full daily batch once a day; Mac keeps the queue filled.
 queue_target: 40       # clips the Mac keeps ready (~5 days at 8/day)
 yt_daily_max: 6        # YouTube free API quota = ~6 uploads/day (hard limit)
 ig_daily_max: 8        # warm-up limit
