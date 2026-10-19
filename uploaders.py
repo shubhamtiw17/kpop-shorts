@@ -19,17 +19,28 @@ def upload_youtube(path, title, desc):
 
 
 def upload_instagram(video_url, caption):
-    """video_url must be public (the queue release asset)."""
+    """video_url must be public (the queue release asset). Raises with IG's error text."""
     ig, tok = os.environ["IG_USER_ID"], os.environ["IG_TOKEN"]
-    base = f"https://graph.instagram.com/v21.0/{ig}"
-    c = requests.post(f"{base}/media", data={"media_type": "REELS", "video_url": video_url,
-                                             "caption": caption[:2200], "access_token": tok}).json()
+    base = "https://graph.instagram.com/v21.0"
+    c = requests.post(f"{base}/{ig}/media", data={"media_type": "REELS", "video_url": video_url,
+                                                 "caption": caption[:2200], "access_token": tok}).json()
+    if "id" not in c:
+        raise RuntimeError(f"create container: {c.get('error', c)}")
     cid = c["id"]
-    for _ in range(30):  # wait for IG processing
-        s = requests.get(f"https://graph.instagram.com/v21.0/{cid}",
-                         params={"fields": "status_code", "access_token": tok}).json()
-        if s.get("status_code") == "FINISHED":
+    status = ""
+    for _ in range(60):  # wait up to 10 min for IG processing
+        s = requests.get(f"{base}/{cid}", params={"fields": "status_code,status",
+                                                  "access_token": tok}).json()
+        status = s.get("status_code", "")
+        if status == "FINISHED":
             break
+        if status == "ERROR":
+            raise RuntimeError(f"processing: {s.get('status', s)}")
         time.sleep(10)
-    return requests.post(f"{base}/media_publish",
-                         data={"creation_id": cid, "access_token": tok}).json().get("id")
+    else:
+        raise RuntimeError(f"processing timed out (last status {status})")
+    r = requests.post(f"{base}/{ig}/media_publish",
+                      data={"creation_id": cid, "access_token": tok}).json()
+    if "id" not in r:
+        raise RuntimeError(f"publish: {r.get('error', r)}")
+    return r["id"]

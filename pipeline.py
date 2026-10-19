@@ -34,7 +34,13 @@ def queue_assets():
 def posted_ids():
     if not os.path.exists(LOG):
         return set()
-    return {r["video_id"] for r in csv.DictReader(open(LOG))}
+    return {r["video_id"] for r in csv.DictReader(open(LOG)) if ok_row(r)}
+
+
+def ok_row(r):
+    """A log row counts only if at least one platform really got the post."""
+    bad = (None, "", "None", "skipped")
+    return r.get("yt_id") not in bad or r.get("ig_id") not in bad
 
 
 def posted_today(col):
@@ -54,17 +60,43 @@ def norm(title):
 
 
 def seen_titles():
-    t = {norm(r["title"]) for r in csv.DictReader(open(LOG))} if os.path.exists(LOG) else set()
+    t = {norm(r["title"]) for r in csv.DictReader(open(LOG)) if ok_row(r)} \
+        if os.path.exists(LOG) else set()
     if os.path.exists(TITLES):
         t |= {l.strip() for l in open(TITLES) if l.strip()}
     return t
 
 
+import re
+
+
+def has_any(title, terms):
+    """English terms match whole words; Korean terms match as substrings."""
+    t = title.lower()
+    for term in terms:
+        term = str(term).lower()
+        if term.isascii():
+            if re.search(r"(?<![a-z])" + re.escape(term) + r"(?![a-z])", t):
+                return True
+        elif term in t:
+            return True
+    return False
+
+
+def idol_tier(title):
+    """'priority', 'normal', or None if the title isn't one of your idols."""
+    hits = [i for i in CFG["idols"] if has_any(title, i["match"])]
+    if not hits:
+        return None
+    return "priority" if any(i.get("priority") for i in hits) else "normal"
+
+
 def candidates(extra_seen=()):
+    """Eligible clips, newest first per cammer, mixed so priority idols get priority_share."""
     seen = posted_ids() | set(extra_seen)
     used = seen_titles()
     blocked = [k.lower() for k in CFG["blocked_title_keywords"]]
-    groups = [g.lower() for names in CFG["focus_groups"].values() for g in names]
+    excluded = CFG.get("excluded_members", [])
     with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True,
                            "playlistend": CFG.get("scan_depth", 300)}) as y:
         lists = []
@@ -74,24 +106,36 @@ def candidates(extra_seen=()):
                 lists.append([(src, e) for e in entries])
             except Exception as e:  # e.g. channel has no videos tab
                 print(f"skip source {src['name']}: {str(e)[:120]}")
-        # round-robin across sources so the feed mixes cammers
-        for i in range(max((len(l) for l in lists), default=0)):
+
+        pools = {"priority": [], "normal": []}
+        for i in range(max((len(l) for l in lists), default=0)):  # round-robin cammers
             for l in lists:
                 if i >= len(l):
                     continue
                 src, e = l[i]
-                vid, title = e["id"], e.get("title", "")
-                t = title.lower()
-                if vid in seen or norm(title) in used or any(b in t for b in blocked):
+                vid, title = e["id"], e.get("title") or ""
+                if vid in seen or any(b in title.lower() for b in blocked):
                     continue
-                if not any(g in t for g in groups):
+                if has_any(title, excluded):
                     continue
-                if src["require_cc"]:
-                    info = y.extract_info(f"https://youtu.be/{vid}", download=False)
-                    if "creative commons" not in (info.get("license") or "").lower():
-                        continue
-                used.add(norm(title))  # one clip per stage/title
-                yield src, vid, title
+                tier = idol_tier(title)
+                if tier:
+                    pools[tier].append((src, vid, title))
+        print(f"Eligible: {len(pools['priority'])} priority, {len(pools['normal'])} other")
+
+        share, n_pri, n_all = CFG.get("priority_share", 0.6), 0, 0
+        while pools["priority"] or pools["normal"]:
+            want_pri = pools["priority"] and (not pools["normal"] or n_pri < share * (n_all + 1))
+            src, vid, title = pools["priority" if want_pri else "normal"].pop(0)
+            if norm(title) in used:
+                continue
+            if src["require_cc"]:
+                info = y.extract_info(f"https://youtu.be/{vid}", download=False)
+                if "creative commons" not in (info.get("license") or "").lower():
+                    continue
+            used.add(norm(title))  # one clip per stage/title
+            n_all += 1; n_pri += bool(want_pri)
+            yield src, vid, title
 
 
 def download(vid):
@@ -259,8 +303,12 @@ def publish():
                 ig = upload_instagram(url, m["desc"]) or "skipped"
                 if ig != "skipped":
                     ig_left -= 1
-            except Exception as e:
-                print("Instagram upload failed:", str(e)[:200])
+            except Exception as e:  # stop trying IG this run; don't burn the queue
+                print("Instagram upload failed:", str(e)[:300]); ig_left = 0
+
+        if yt == "skipped" and ig == "skipped":
+            print(f"Nothing posted for {vid}; keeping it in the queue and stopping.")
+            break
 
         new = not os.path.exists(LOG)
         with open(LOG, "a", newline="") as f:

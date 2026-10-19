@@ -32,22 +32,28 @@ scan_depth: 2000       # whole back-catalogue: months of clips even if a cammer 
 clip_seconds: 25
 min_clip_seconds: 12
 
-# Only clips whose title mentions one of these (English or Korean) are posted
-focus_groups:
-  TWICE: ["twice", "트와이스"]
-  BLACKPINK: ["blackpink", "블랙핑크"]
-  aespa: ["aespa", "에스파"]
-  ITZY: ["itzy", "있지"]
-  LE SSERAFIM: ["le sserafim", "lesserafim", "르세라핌"]
-  IVE: ["ive ", "(ive)", "[ive]", "아이브"]
-  BABYMONSTER: ["babymonster", "baby monster", "베이비몬스터"]
-  ILLIT: ["illit", "아일릿"]
-  NMIXX: ["nmixx", "엔믹스"]
-  i-dle: ["(g)i-dle", "i-dle", "gidle", "아이들"]
-  Red Velvet: ["red velvet", "레드벨벳"]
-  KISS OF LIFE: ["kiss of life", "키스오브라이프"]
-  STAYC: ["stayc", "스테이씨"]
-  NewJeans: ["newjeans", "뉴진스"]
+# Only these idols/groups are posted. A title must match one "match" term.
+# priority: true  -> gets priority_share of the feed (the rest is everyone else).
+priority_share: 0.6
+idols:
+  - {name: BLACKPINK, priority: true,
+     match: [blackpink, 블랙핑크, jisoo, 지수, jennie, 제니, rosé, rose, 로제, lisa, 리사]}
+  - {name: Karina (aespa), priority: true, match: [karina, 카리나]}
+  - {name: Chaewon (LE SSERAFIM), priority: true, match: [chaewon, 김채원, 채원]}
+  - {name: Sana (TWICE), priority: true, match: [sana, 사나]}
+  - {name: aespa, match: [aespa, 에스파, giselle, 지젤, winter, 윈터, ningning, 닝닝]}
+  - {name: LE SSERAFIM, match: [le sserafim, lesserafim, 르세라핌, sakura, 사쿠라, yunjin, 허윤진, kazuha, 카즈하, eunchae, 은채]}
+  - {name: TWICE, match: [twice, 트와이스, nayeon, 나연, momo, 모모, jihyo, 지효, mina, 미나, dahyun, 다현, tzuyu, 쯔위]}
+  - {name: ITZY, match: [itzy, 있지, yeji, 예지, ryujin, 류진, yuna, 유나]}
+  - {name: IVE, match: [ive, 아이브, yujin, 안유진, gaeul, 가을, rei, 레이, wonyoung, 장원영, liz, 리즈, leeseo, 이서]}
+  - {name: NMIXX, match: [nmixx, 엔믹스, lily, 릴리, haewon, 해원, sullyoon, 설윤, bae, 배이, jiwoo, 지우, kyujin, 규진]}
+  - {name: BABYMONSTER, match: [babymonster, baby monster, 베이비몬스터, ruka, 루카, pharita, 파리타, asa, 아사, ahyeon, 아현, rami, 라미, rora, 로라]}
+  - {name: ILLIT, match: [illit, 아일릿, yunah, 윤아, minju, 민주, moka, 모카, wonhee, 원희, iroha, 이로하]}
+  - {name: SOMI, match: [somi, 전소미, 소미]}
+  - {name: KISS OF LIFE, match: [kiss of life, kiof, 키스오브라이프, julie, 쥴리, natty, 나띠, belle, 벨, haneul, 하늘]}
+
+# Members you DON'T want (skip clips that name them)
+excluded_members: [jeongyeon, 정연, twice chaeyoung, 트와이스 채영, son chaeyoung, 손채영, lia, 리아, chaeryeong, 채령]
 
 # Skip any video whose title mentions these (members under 18 / unwanted framing).
 # Keep this updated as new groups debut.
