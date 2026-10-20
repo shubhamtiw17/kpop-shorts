@@ -22,11 +22,11 @@ sources:
     require_cc: true   # per-video licence check
 
 # Volume. Cloud posts the full daily batch once a day; Mac keeps the queue filled.
-queue_target: 40       # clips the Mac keeps ready (~5 days at 8/day)
+queue_target: 20       # ~3 days at 6/day (YouTube only)
 yt_daily_max: 6        # YouTube free API quota = ~6 uploads/day (hard limit)
-ig_daily_max: 8        # warm-up limit
+ig_daily_max: 0        # Instagram paused (flagged as unoriginal)
 ig_ramp_date: "2026-10-31"   # from this date on, IG limit rises automatically
-ig_daily_max_after: 16
+ig_daily_max_after: 0
 scan_depth: 2000       # whole back-catalogue: months of clips even if a cammer stops
 
 clip_seconds: 25
